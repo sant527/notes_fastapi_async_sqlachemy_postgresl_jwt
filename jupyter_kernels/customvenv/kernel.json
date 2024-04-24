@@ -1,0 +1,15 @@
+{
+ "argv": [
+  "/home/simha/app/.venv/bin/python",
+  "-Xfrozen_modules=off",
+  "-m",
+  "ipykernel_launcher",
+  "-f",
+  "{connection_file}"
+ ],
+ "display_name": "customvenv",
+ "language": "python",
+ "metadata": {
+  "debugger": true
+ }
+}

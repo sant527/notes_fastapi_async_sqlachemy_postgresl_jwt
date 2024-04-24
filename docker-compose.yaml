@@ -1,0 +1,171 @@
+# my version of docker
+# $ docker --version
+# Docker version 24.0.5, build 24.0.5-0ubuntu1~20.04.1
+
+# my docker compose version
+# $ docker-compose --version
+# docker-compose version 1.29.2, build 5becea4c
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml up --build --force-recreate --remove-orphans
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml logs --no-color --tail=2000 jupyter
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml logs --no-color --tail=2000 webapp
+
+# docker stop $(docker ps -aq); docker rm $(docker ps -a -q); docker container prune --force; docker image prune --force; docker network prune --force
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml exec webapp /bin/bash
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml exec jupyter /bin/bash
+
+# docker-compose -p fastapi_test-xyzp -f docker-compose.yaml restart nginx
+
+# docker-compose -f docker-compose.yaml -p fastapi_test-xyzp ps -a 
+
+
+# cd into this directory (want to build the image with no caching)
+# docker-compose -p fastapi_test-xyzp build --no-cache webapp (by default docker compose created image with project name)
+
+# rebuild image
+# docker-compose -p fastapi_test-xyzp build webapp
+
+# docker rmi fastapi_test-xyzp_webapp (if any changes done)
+# docker-compose -p fastapi_test-xyzp run --rm --no-deps webapp /bin/bash
+
+# access at 
+# http://localhost:8028/
+
+
+# Compose file format supported till version  19.03.0+ is 3.8
+version: "3.7"
+services:
+  postgres:
+    image: postgres:16.2-alpine
+    volumes:
+      - ../DO_NOT_DELETE_postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB_NAME}
+    networks:
+      - db_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB_NAME} -h localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dbeaver:
+    image: "dbeaver/cloudbeaver:24"
+    networks:
+      - nginx_network
+      - db_network
+    volumes:
+      - ../DO_NOT_DELETE_dbeaver:/opt/cloudbeaver/workspace
+
+  webapp:
+    build:
+      context: ../DO_NOT_DELETE_CODING_FOLDER/backend_fastapi
+      dockerfile: Dockerfile
+      target: base
+    working_dir: /home/simha/app
+    environment:
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      REFRESH_TOKEN_EXPIRE_MINUTES: ${REFRESH_TOKEN_EXPIRE_MINUTES}
+    depends_on:
+        postgres:
+          condition: service_healthy
+    volumes:
+      - type: bind
+        source: ../DO_NOT_DELETE_CODING_FOLDER/backend_fastapi
+        target: /home/simha/app
+    command:
+      - sh
+      - -c
+      - |
+        poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    stdin_open: true # Add this line into your service
+    tty: true # Add this line into your service
+    networks:
+      - webapp_network
+      - nginx_network
+      - db_network
+
+  jupyter:
+    build:
+      context: ../DO_NOT_DELETE_CODING_FOLDER/backend_fastapi
+      dockerfile: Dockerfile
+      target: base
+    working_dir: /home/simha/direct/jupyter
+    environment:
+      POSTGRES_DB_NAME: ${POSTGRES_DB_NAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY}
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      REFRESH_TOKEN_EXPIRE_MINUTES: ${REFRESH_TOKEN_EXPIRE_MINUTES}
+    depends_on:
+        postgres:
+          condition: service_healthy
+    volumes:
+      - type: bind
+        source: ../DO_NOT_DELETE_CODING_FOLDER/backend_fastapi
+        target: /home/simha/app
+      - type: bind
+        source: ./jupyter_notebook_mount
+        target: /home/simha/direct/jupyter
+      - type: bind
+        source: ./python_debugxyz
+        target: /home/simha/direct/debugxyz
+      - type: bind
+        source: ./jupyter_password
+        target: /home/simha/.jupyter
+      - type: bind
+        source: ./jupyter_kernels
+        target: /home/simha/.local/share/jupyter/kernels
+    command:
+      - sh
+      - -c
+      - |
+       . /home/simha/app/.venv/bin/activate && jupyter lab --ip=0.0.0.0 --port=8888
+      #. /home/simha/direct/.venv/bin/activate && which python && which jupyter && jupyter notebook --ip=*
+    stdin_open: true # Add this line into your service
+    tty: true # Add this line into your service
+    networks:
+      - webapp_network
+      - nginx_network
+      - db_network
+
+  nginx:
+    image: nginx:1.25.2
+    ports:
+      - 8028:80
+    volumes:
+      - ./nginx/localhost/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - webapp
+      - dbeaver
+    networks:
+      - nginx_network
+      - webapp_network
+
+
+networks:
+  webapp_network:
+    driver: bridge
+  db_network:
+    driver: bridge
+  nginx_network:
+    driver: bridge
